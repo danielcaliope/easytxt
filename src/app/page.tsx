@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const PALETTE = ["coral", "mint", "lilac", "yellow", "blue"] as const;
 
@@ -23,13 +24,17 @@ type GenerationResult = { texto_otimizado: string; meta_title: string; meta_desc
 
 type Generation = { id: string; siteName: string; textoOtimizado: string; metaTitle: string; metaDescription: string; palavrasChaveUsadas: string[]; altTexts: string[]; criadoEm: string };
 
+type CurrentUser = { id: string; nome: string; email: string; role: "ADMIN" | "MEMBRO" };
+
+type UserAccount = { id: string; nome: string; email: string; role: "ADMIN" | "MEMBRO"; criadoEm: string };
+
 const initialSites: Site[] = [
   { name: "Karol Festas", url: "karolfestas.com.br", niche: "artigos para festas infantis", audience: "Pais e organizadores de festa infantil", tone: "Alegre e próximo", styleNotes: "Frases curtas, CTA direto no fim do texto.", status: "concluído", color: "coral", keywords: ["decoração de festa", "festa infantil", "balões"] },
   { name: "Bello Festas", url: "bellofestas.com.br", niche: "artigos para celebrações", audience: "Anfitriões de eventos e celebrações", tone: "Inspirador e acolhedor", styleNotes: "Parágrafos médios, tom emocional na abertura.", status: "concluído", color: "mint", keywords: ["festa personalizada", "lembrancinhas", "decoração"] },
   { name: "Casa Nuvem", url: "casanuvem.com.br", niche: "papelaria criativa", audience: "Consumidores de papelaria e presentes", tone: "Leve e criativo", styleNotes: "Aguardando scan da IA.", status: "pendente", color: "lilac", keywords: ["papelaria", "presentes criativos"] },
 ];
 
-const navItems = [
+const baseNavItems = [
   ["Visão geral", "⌂"],
   ["Gerar conteúdo", "✦"],
   ["Sites e perfis", "◎"],
@@ -66,6 +71,16 @@ function mapApiGeneration(row: Record<string, unknown>): Generation {
   };
 }
 
+function mapApiUser(row: Record<string, unknown>): UserAccount {
+  return {
+    id: String(row.id ?? ""),
+    nome: String(row.nome ?? ""),
+    email: String(row.email ?? ""),
+    role: row.role === "ADMIN" ? "ADMIN" : "MEMBRO",
+    criadoEm: String(row.criadoEm ?? ""),
+  };
+}
+
 function siteKey(site: Site) {
   return site.id ?? site.name;
 }
@@ -75,6 +90,7 @@ function siteToForm(site: Site): SiteFormState {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [activeNav, setActiveNav] = useState("Visão geral");
   const [sites, setSites] = useState(initialSites);
   const [selectedSite, setSelectedSite] = useState(siteKey(initialSites[0]));
@@ -94,11 +110,46 @@ export default function Home() {
   const [editForm, setEditForm] = useState<SiteFormState | null>(null);
   const [isSavingSite, setIsSavingSite] = useState(false);
   const [isRescanning, setIsRescanning] = useState(false);
+  const [showNewUser, setShowNewUser] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ nome: "", email: "", senha: "", role: "MEMBRO" as "ADMIN" | "MEMBRO" });
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [generationsLoaded, setGenerationsLoaded] = useState(false);
   const isLoadingGenerations = activeNav === "Histórico" && !generationsLoaded;
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const isAdmin = currentUser?.role === "ADMIN";
+  const isLoadingUsers = activeNav === "Usuários" && isAdmin && !usersLoaded;
+  const navItems = isAdmin ? [...baseNavItems, ["Usuários", "◈"] as const] : baseNavItems;
 
   const currentSite = sites.find((site) => siteKey(site) === selectedSite) ?? sites[0];
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: CurrentUser | null) => setCurrentUser(data))
+      .catch(() => setCurrentUser(null));
+  }, []);
+
+  useEffect(() => {
+    if (!isLoadingUsers) return;
+    fetch("/api/users")
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: Array<Record<string, unknown>>) => {
+        setUsers(data.map(mapApiUser));
+        setUsersLoaded(true);
+      })
+      .catch(() => {
+        setSiteError("Não foi possível carregar os usuários.");
+        setUsersLoaded(true);
+      });
+  }, [isLoadingUsers]);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
 
   useEffect(() => {
     fetch("/api/sites")
@@ -244,6 +295,46 @@ export default function Home() {
     }
   }
 
+  async function addUser() {
+    if (!newUserForm.nome.trim() || !newUserForm.email.trim() || newUserForm.senha.length < 6) return;
+    setIsSavingUser(true);
+    try {
+      const response = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newUserForm) });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Não foi possível criar o usuário");
+      const created = mapApiUser(await response.json());
+      setUsers((current) => [...current, created]);
+      setShowNewUser(false);
+      setNewUserForm({ nome: "", email: "", senha: "", role: "MEMBRO" });
+    } catch (error) {
+      setSiteError(error instanceof Error ? error.message : "Não foi possível criar o usuário");
+    } finally {
+      setIsSavingUser(false);
+    }
+  }
+
+  async function removeUser(user: UserAccount) {
+    if (!window.confirm(`Remover o acesso de ${user.nome}?`)) return;
+    try {
+      const response = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Não foi possível remover o usuário");
+      setUsers((current) => current.filter((item) => item.id !== user.id));
+    } catch (error) {
+      setSiteError(error instanceof Error ? error.message : "Não foi possível remover o usuário");
+    }
+  }
+
+  async function toggleUserRole(user: UserAccount) {
+    const nextRole = user.role === "ADMIN" ? "MEMBRO" : "ADMIN";
+    try {
+      const response = await fetch(`/api/users/${user.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: nextRole }) });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Não foi possível atualizar o usuário");
+      const updated = mapApiUser(await response.json());
+      setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (error) {
+      setSiteError(error instanceof Error ? error.message : "Não foi possível atualizar o usuário");
+    }
+  }
+
   function copyField(label: string, value?: string) {
     if (value) void navigator.clipboard?.writeText(value);
     setCopied(label);
@@ -270,7 +361,14 @@ export default function Home() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom"><button className="nav-item"><span className="nav-icon">?</span>Ajuda e suporte</button><div className="profile-row"><span className="profile-avatar">DR</span><span><strong>Daniel Rocha</strong><small>Administrador</small></span><span className="more">···</span></div></div>
+        <div className="sidebar-bottom">
+          <button className="nav-item"><span className="nav-icon">?</span>Ajuda e suporte</button>
+          <div className="profile-row">
+            <span className="profile-avatar">{currentUser ? currentUser.nome.slice(0, 2).toUpperCase() : "··"}</span>
+            <span><strong>{currentUser?.nome ?? "Carregando..."}</strong><small>{currentUser?.role === "ADMIN" ? "Administrador" : "Membro"}</small></span>
+            <button className="more" onClick={logout} title="Sair">⎋</button>
+          </div>
+        </div>
       </aside>
 
       <section className="content-area">
@@ -278,7 +376,7 @@ export default function Home() {
         {(siteError || scanMessage || isLoadingSites) && <div className="app-notice">{isLoadingSites ? "Sincronizando sites..." : siteError || scanMessage}<button onClick={() => { setSiteError(""); setScanMessage(""); }}>×</button></div>}
 
         {activeNav === "Visão geral" && <>
-          <div className="page-heading"><div><p className="eyebrow">SEGUNDA-FEIRA, 14 DE SETEMBRO</p><h1>Bom dia, Daniel <span>✦</span></h1><p className="subtitle">Seu conteúdo está pronto para ficar mais nítido.</p></div><div className="heading-note"><span className="status-dot green" />Tudo sincronizado<br /><small>última verificação há 8 min</small></div></div>
+          <div className="page-heading"><div><p className="eyebrow">SEGUNDA-FEIRA, 14 DE SETEMBRO</p><h1>Bom dia, {currentUser?.nome.split(" ")[0] ?? ""} <span>✦</span></h1><p className="subtitle">Seu conteúdo está pronto para ficar mais nítido.</p></div><div className="heading-note"><span className="status-dot green" />Tudo sincronizado<br /><small>última verificação há 8 min</small></div></div>
           <div className="metric-grid"><Metric label="Sites ativos" value={String(sites.length)} detail={`${sites.filter((s) => s.status === "concluído").length} perfis completos`} accent="coral" /><Metric label="Conteúdos otimizados" value="28" detail="↑ 18% este mês" accent="blue" /><Metric label="Score médio SEO" value="87" detail="↑ 6 pts este mês" accent="yellow" /><Metric label="Sugestões aplicadas" value="64" detail="de 79 recomendações" accent="mint" /></div>
           <div className="dashboard-grid"><section className="panel sites-panel"><div className="panel-heading"><div><p className="section-kicker">SEUS SITES</p><h2>Perfis editoriais</h2></div><button className="text-button" onClick={() => setActiveNav("Sites e perfis")}>Ver todos <span>→</span></button></div><div className="site-list">{sites.map((site) => <SiteRow key={siteKey(site)} site={site} onClick={() => { setSelectedSite(siteKey(site)); setActiveNav("Gerar conteúdo"); }} />)}</div><button className="add-site-row" onClick={() => setShowNewSite(true)}><span>＋</span> Adicionar novo site</button></section><section className="panel activity-panel"><div className="panel-heading"><div><p className="section-kicker">ATIVIDADE RECENTE</p><h2>O que está acontecendo</h2></div><button className="icon-button small">···</button></div><div className="activity-list"><Activity icon="✦" color="coral" title="Conteúdo otimizado" description="Página de balões metalizados" time="há 12 min" /><Activity icon="↻" color="blue" title="Perfil atualizado" description="Bello Festas foi reescaneado" time="há 2 h" /><Activity icon="✓" color="mint" title="Meta aprovada" description="Coleção Festa Junina" time="ontem" /></div><div className="weekly-score"><div><span className="section-kicker">RITMO DA SEMANA</span><strong>12 conteúdos</strong></div><div className="mini-bars"><i /><i /><i /><i /><i /><i /><i /></div></div></section></div>
           <div className="insight-banner"><div className="insight-icon">✦</div><div><strong>Uma oportunidade para hoje</strong><p>Conteúdos com resposta direta no primeiro parágrafo têm <b>2,4× mais chances</b> de serem citados por engines de IA.</p></div><button className="button button-outline" onClick={() => setActiveNav("Gerar conteúdo")}>Criar conteúdo <span>→</span></button></div>
@@ -289,6 +387,7 @@ export default function Home() {
         )}
         {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(key) => { setSelectedSite(key); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
         {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} />}
+        {activeNav === "Usuários" && <UsersView users={users} isLoading={isLoadingUsers} currentUserId={currentUser?.id} onNew={() => setShowNewUser(true)} onToggleRole={toggleUserRole} onRemove={removeUser} />}
       </section>
 
       {showNewSite && (
@@ -327,6 +426,27 @@ export default function Home() {
               <button className="button button-outline" onClick={rescanEditingSite} disabled={isRescanning || !editingSite.id}>{isRescanning ? "Escaneando..." : "Reescanear site"}</button>
               <div><button className="button button-quiet" onClick={closeEdit}>Cancelar</button><button className="button button-dark" onClick={saveEditedSite} disabled={isSavingSite}>{isSavingSite ? "Salvando..." : "Salvar site"}</button></div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showNewUser && (
+        <div className="modal-backdrop" onClick={() => setShowNewUser(false)}>
+          <div className="modal" onClick={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowNewUser(false)}>×</button>
+            <p className="eyebrow">NOVO ACESSO</p>
+            <h2>Adicione um usuário</h2>
+            <p className="modal-copy">A pessoa vai poder entrar com esse e-mail e senha. Você pode trocar a senha ou remover o acesso depois.</p>
+            <label>Nome<input value={newUserForm.nome} onChange={(event) => setNewUserForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome completo" /></label>
+            <label>E-mail<input type="email" value={newUserForm.email} onChange={(event) => setNewUserForm((current) => ({ ...current, email: event.target.value }))} placeholder="pessoa@empresa.com.br" /></label>
+            <label>Senha<input type="password" value={newUserForm.senha} onChange={(event) => setNewUserForm((current) => ({ ...current, senha: event.target.value }))} placeholder="Mínimo de 6 caracteres" /></label>
+            <label>Papel
+              <select value={newUserForm.role} onChange={(event) => setNewUserForm((current) => ({ ...current, role: event.target.value === "ADMIN" ? "ADMIN" : "MEMBRO" }))}>
+                <option value="MEMBRO">Membro</option>
+                <option value="ADMIN">Administrador</option>
+              </select>
+            </label>
+            <div className="modal-actions"><button className="button button-quiet" onClick={() => setShowNewUser(false)}>Cancelar</button><button className="button button-dark" onClick={addUser} disabled={isSavingUser}>{isSavingUser ? "Criando..." : "Criar acesso"}</button></div>
           </div>
         </div>
       )}
@@ -446,6 +566,33 @@ function HistoryView({ generations, isLoading, copied, copyField }: { generation
                 <p className="history-title">{generation.metaTitle || "Sem meta title"}</p>
                 <p className="history-preview">{generation.textoOtimizado.slice(0, 220)}{generation.textoOtimizado.length > 220 ? "…" : ""}</p>
                 <button className="copy-button" onClick={() => copyField(`hist-${generation.id}`, generation.textoOtimizado)}>{copied === `hist-${generation.id}` ? "Copiado" : "⧉ Copiar texto"}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function UsersView({ users, isLoading, currentUserId, onNew, onToggleRole, onRemove }: { users: UserAccount[]; isLoading: boolean; currentUserId?: string; onNew: () => void; onToggleRole: (user: UserAccount) => void; onRemove: (user: UserAccount) => void }) {
+  return (
+    <>
+      <div className="page-heading"><div><p className="eyebrow">ACESSO</p><h1>Usuários <span>◈</span></h1><p className="subtitle">Quem pode entrar no workspace.</p></div><button className="button button-dark" onClick={onNew}>＋ Novo usuário</button></div>
+      <section className="panel full-panel">
+        <div className="panel-heading"><div><p className="section-kicker">CONTAS CADASTRADAS</p><h2>{users.length} usuários com acesso</h2></div></div>
+        {isLoading ? (
+          <div className="history-empty"><div className="empty-sparkle">◈</div><h2>Carregando usuários...</h2></div>
+        ) : (
+          <div className="site-table">
+            {users.map((user) => (
+              <div className="site-table-row user-row" key={user.id}>
+                <span className={`site-logo ${user.role === "ADMIN" ? "coral" : "blue"}`}>{user.nome.slice(0, 1).toUpperCase()}</span>
+                <span className="site-info"><strong>{user.nome}{user.id === currentUserId && " (você)"}</strong><small>{user.email}</small></span>
+                <span className="table-detail"><small>PAPEL</small>{user.role === "ADMIN" ? "Administrador" : "Membro"}</span>
+                <span className="table-detail"><small>DESDE</small>{new Date(user.criadoEm).toLocaleDateString("pt-BR")}</span>
+                <button className="text-button" onClick={() => onToggleRole(user)}>{user.role === "ADMIN" ? "Tornar membro" : "Tornar admin"}</button>
+                <button className="text-button danger" onClick={() => onRemove(user)} disabled={user.id === currentUserId}>Remover</button>
               </div>
             ))}
           </div>

@@ -14,6 +14,34 @@ enum StatusScan {
   ERRO
 }
 
+enum UserRole {
+  ADMIN
+  MEMBRO
+}
+
+model User {
+  id        String    @id @default(cuid())
+  nome      String
+  email     String    @unique
+  senhaHash String    @map("senha_hash")
+  role      UserRole  @default(MEMBRO)
+  criadoEm  DateTime  @default(now()) @map("criado_em")
+  sessions  Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  criadoEm  DateTime @default(now()) @map("criado_em")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
 model Site {
   id                 String              @id @default(cuid())
   nome               String

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser, SESSION_COOKIE_NAME } from "@/lib/auth";
 
-export function proxy(request: NextRequest) {
-  if (!process.env.APP_PASSWORD) return NextResponse.next();
+export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/api/auth")) return NextResponse.next();
-  if (request.cookies.get("seo_geo_session")?.value === "authenticated") return NextResponse.next();
+  const user = await getSessionUser(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+  if (user) return NextResponse.next();
   return NextResponse.redirect(new URL("/login", request.url));
 }
 
