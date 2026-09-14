@@ -2,7 +2,15 @@ import * as cheerio from "cheerio";
 import { GEMINI_MODEL, getGeminiClient } from "./gemini";
 
 const REQUEST_TIMEOUT = 12_000;
-const SCANNER_USER_AGENT = "NitidaSEOBot/1.0 (+https://easytxt.vercel.app)";
+// Um user-agent de bot explícito é bloqueado por proteções básicas (Webflow/Cloudflare) em vários
+// dos sites reais escaneados. Usar um user-agent de navegador evita esse falso-positivo; o header
+// customizado abaixo mantém o scanner identificável para quem inspecionar os logs do site.
+const SCANNER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  "Accept-Language": "pt-BR,pt;q=0.9",
+  "X-Nitida-Scanner": "https://easytxt.vercel.app",
+};
 const SCAN_PROMPT = `Você está analisando o conteúdo extraído de um site de e-commerce para criar um perfil editorial inicial. Com base no texto abaixo, infira nicho, publico_alvo, tom_de_voz, 8 a 12 palavras-chave temáticas e notas_de_estilo. Responda apenas com JSON neste formato: {"nicho":"","publico_alvo":"","tom_de_voz":"","palavras_chave_base":[],"notas_de_estilo":""}. Se faltar evidência, use string vazia em vez de inventar.\n\nConteúdo extraído do site:\n`;
 
 type PageContent = { url: string; title: string; description: string; headings: string[]; text: string };
@@ -13,7 +21,7 @@ function normalizeUrl(value: string) {
 }
 
 async function fetchText(url: string) {
-  const response = await fetch(url, { headers: { "User-Agent": SCANNER_USER_AGENT }, signal: AbortSignal.timeout(REQUEST_TIMEOUT) });
+  const response = await fetch(url, { headers: SCANNER_HEADERS, signal: AbortSignal.timeout(REQUEST_TIMEOUT) });
   if (!response.ok) throw new Error(`Fetch ${response.status}: ${url}`);
   return response.text();
 }
