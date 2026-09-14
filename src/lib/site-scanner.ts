@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import { GEMINI_MODEL, getGeminiClient } from "./gemini";
 
 const REQUEST_TIMEOUT = 12_000;
+const SCANNER_USER_AGENT = "NitidaSEOBot/1.0 (+https://easytxt.vercel.app)";
 const SCAN_PROMPT = `Você está analisando o conteúdo extraído de um site de e-commerce para criar um perfil editorial inicial. Com base no texto abaixo, infira nicho, publico_alvo, tom_de_voz, 8 a 12 palavras-chave temáticas e notas_de_estilo. Responda apenas com JSON neste formato: {"nicho":"","publico_alvo":"","tom_de_voz":"","palavras_chave_base":[],"notas_de_estilo":""}. Se faltar evidência, use string vazia em vez de inventar.\n\nConteúdo extraído do site:\n`;
 
 type PageContent = { url: string; title: string; description: string; headings: string[]; text: string };
@@ -12,7 +13,7 @@ function normalizeUrl(value: string) {
 }
 
 async function fetchText(url: string) {
-  const response = await fetch(url, { headers: { "User-Agent": "NítidaSEO/1.0 (+site scan)" }, signal: AbortSignal.timeout(REQUEST_TIMEOUT) });
+  const response = await fetch(url, { headers: { "User-Agent": SCANNER_USER_AGENT }, signal: AbortSignal.timeout(REQUEST_TIMEOUT) });
   if (!response.ok) throw new Error(`Fetch ${response.status}: ${url}`);
   return response.text();
 }
