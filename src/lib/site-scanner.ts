@@ -89,6 +89,6 @@ export async function scanSite(rawUrl: string) {
 
   const client = getGeminiClient();
   const consolidated = pages.map((page) => `URL: ${page.url}\nTITLE: ${page.title}\nDESCRIPTION: ${page.description}\nHEADINGS: ${page.headings.join(" | ")}\nTEXTO: ${page.text}`).join("\n\n---\n\n");
-  const response = await client.models.generateContent({ model: GEMINI_MODEL, contents: consolidated, config: { systemInstruction: SCAN_PROMPT, responseMimeType: "application/json", maxOutputTokens: 1200 } });
+  const response = await client.models.generateContent({ model: GEMINI_MODEL, contents: consolidated, config: { systemInstruction: SCAN_PROMPT, responseMimeType: "application/json", maxOutputTokens: 2_000, thinkingConfig: { thinkingBudget: 0 } } });
   return parseProfile(response.text ?? "{}");
 }

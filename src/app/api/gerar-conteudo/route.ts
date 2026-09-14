@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     const client = getGeminiClient();
-    const response = await client.models.generateContent({ model: GEMINI_MODEL, contents: parts, config: { responseMimeType: "application/json", maxOutputTokens: 4_000 } });
+    const response = await client.models.generateContent({ model: GEMINI_MODEL, contents: parts, config: { responseMimeType: "application/json", maxOutputTokens: 6_000, thinkingConfig: { thinkingBudget: 0 } } });
     const result = parseResult(response.text ?? "{}");
     const saved = await prisma.geracaoDeConteudo.create({ data: { siteId, textoOriginal, textoOtimizado: result.texto_otimizado, metaTitle: result.meta_title, metaDescription: result.meta_description, palavrasChaveUsadas: result.palavras_chave_usadas, palavrasChaveSugeridas: result.palavras_chave_sugeridas, altTexts: result.alt_texts } });
     return NextResponse.json({ ...result, id: saved.id, criado_em: saved.criadoEm });
