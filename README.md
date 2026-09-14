@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# nitida | SEO + GEO
 
-## Getting Started
+Ferramenta interna para criar perfis editoriais de sites e otimizar conteudo para busca tradicional e engines generativas.
 
-First, run the development server:
+## Rodar localmente
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
+# preencha DATABASE_URL, DIRECT_URL, GEMINI_API_KEY e APP_PASSWORD
+npm install
+npm run db:generate
+npm run db:push
+npm run dev -- --port 3007
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abra `http://localhost:3007`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Sem `APP_PASSWORD`, o acesso fica aberto para desenvolvimento local. Em producao, configure a senha compartilhada. O scan e a geracao retornam erro controlado enquanto `GEMINI_API_KEY` nao estiver configurada.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`GEMINI_API_KEY` e gerada em [aistudio.google.com/apikey](https://aistudio.google.com/apikey). `GEMINI_MODEL` e opcional (padrao `gemini-flash-latest`).
 
-## Learn More
+## API
 
-To learn more about Next.js, take a look at the following resources:
+- `GET /api/sites` lista sites.
+- `POST /api/sites` cria um site.
+- `GET|PUT /api/sites/:id` consulta ou atualiza um perfil.
+- `POST /api/sites/:id/scan` respeita `robots.txt`, le sitemap, extrai HTML com Cheerio e gera o perfil com Gemini.
+- `POST /api/gerar-conteudo` recebe `multipart/form-data` com `site_id`, `texto` e imagens opcionais.
+- `GET /api/geracoes?site_id=` consulta o historico.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Na Vercel, configure `DATABASE_URL`, `DIRECT_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL` opcional e `APP_PASSWORD`. Execute `npm run db:push` uma vez contra o banco Postgres de producao antes do primeiro uso.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+O modelo de dados esta em [`prisma/schema.prisma`](prisma/schema.prisma).

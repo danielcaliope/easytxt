@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum StatusScan {
+  PENDENTE
+  CONCLUIDO
+  ERRO
+}
+
+model Site {
+  id                 String              @id @default(cuid())
+  nome               String
+  url                String
+  nicho              String              @default("")
+  publicoAlvo        String              @default("") @map("publico_alvo")
+  tomDeVoz           String              @default("") @map("tom_de_voz")
+  palavrasChaveBase  String[]            @default([]) @map("palavras_chave_base")
+  notasDeEstilo      String              @default("") @map("notas_de_estilo")
+  statusScan         StatusScan          @default(PENDENTE) @map("status_scan")
+  ultimoScanEm       DateTime?           @map("ultimo_scan_em")
+  criadoEm           DateTime            @default(now()) @map("criado_em")
+  atualizadoEm       DateTime            @updatedAt @map("atualizado_em")
+  geracoes           GeracaoDeConteudo[]
+
+  @@index([statusScan])
+  @@map("sites")
+}
+
+model GeracaoDeConteudo {
+  id                    String   @id @default(cuid())
+  siteId                String   @map("site_id")
+  textoOriginal         String   @map("texto_original") @db.Text
+  textoOtimizado        String   @map("texto_otimizado") @db.Text
+  metaTitle             String   @map("meta_title")
+  metaDescription       String   @map("meta_description") @db.Text
+  palavrasChaveUsadas   String[] @default([]) @map("palavras_chave_usadas")
+  palavrasChaveSugeridas String[] @default([]) @map("palavras_chave_sugeridas")
+  altTexts              String[] @default([]) @map("alt_texts")
+  criadoEm              DateTime @default(now()) @map("criado_em")
+  site                  Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, criadoEm])
+  @@map("geracoes_de_conteudo")
+}
