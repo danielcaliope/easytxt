@@ -19,6 +19,23 @@ enum UserRole {
   MEMBRO
 }
 
+enum AiProvider {
+  GEMINI
+  OPENAI
+  ANTHROPIC
+  GROQ
+}
+
+model AiSettings {
+  id        String     @id @default("singleton")
+  provider  AiProvider @default(GEMINI)
+  apiKey    String     @map("api_key")
+  model     String
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("ai_settings")
+}
+
 model User {
   id        String    @id @default(cuid())
   nome      String

@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { GEMINI_MODEL, getGeminiClient } from "./gemini";
+import { generateJsonText, getAiConfig } from "./ai-provider";
 
 const REQUEST_TIMEOUT = 12_000;
 // Um user-agent de bot explícito é bloqueado por proteções básicas (Webflow/Cloudflare) em vários
@@ -87,8 +87,8 @@ export async function scanSite(rawUrl: string) {
   }
   if (!pages.length) throw new Error("Não foi possível extrair páginas do site");
 
-  const client = getGeminiClient();
   const consolidated = pages.map((page) => `URL: ${page.url}\nTITLE: ${page.title}\nDESCRIPTION: ${page.description}\nHEADINGS: ${page.headings.join(" | ")}\nTEXTO: ${page.text}`).join("\n\n---\n\n");
-  const response = await client.models.generateContent({ model: GEMINI_MODEL, contents: consolidated, config: { systemInstruction: SCAN_PROMPT, responseMimeType: "application/json", maxOutputTokens: 2_000, thinkingConfig: { thinkingBudget: 0 } } });
-  return parseProfile(response.text ?? "{}");
+  const config = await getAiConfig();
+  const raw = await generateJsonText(config, { systemPrompt: SCAN_PROMPT, userText: consolidated, maxOutputTokens: 2_000 });
+  return parseProfile(raw);
 }

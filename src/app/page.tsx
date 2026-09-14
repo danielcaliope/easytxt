@@ -28,6 +28,24 @@ type CurrentUser = { id: string; nome: string; email: string; role: "ADMIN" | "M
 
 type UserAccount = { id: string; nome: string; email: string; role: "ADMIN" | "MEMBRO"; criadoEm: string };
 
+type AiProviderName = "GEMINI" | "OPENAI" | "ANTHROPIC" | "GROQ";
+
+type AiSettingsState = { provider: AiProviderName; model: string; apiKeyMasked: string; hasApiKey: boolean };
+
+const AI_PROVIDER_LABELS: Record<AiProviderName, string> = {
+  GEMINI: "Google Gemini",
+  OPENAI: "OpenAI (ChatGPT)",
+  ANTHROPIC: "Anthropic (Claude)",
+  GROQ: "Groq (Llama e outros)",
+};
+
+const AI_PROVIDER_HINTS: Record<AiProviderName, string> = {
+  GEMINI: "ex. gemini-3.6-flash",
+  OPENAI: "ex. gpt-4o-mini",
+  ANTHROPIC: "ex. claude-sonnet-5",
+  GROQ: "ex. llama-3.1-8b-instant",
+};
+
 const initialSites: Site[] = [
   { name: "Karol Festas", url: "karolfestas.com.br", niche: "artigos para festas infantis", audience: "Pais e organizadores de festa infantil", tone: "Alegre e próximo", styleNotes: "Frases curtas, CTA direto no fim do texto.", status: "concluído", color: "coral", keywords: ["decoração de festa", "festa infantil", "balões"] },
   { name: "Bello Festas", url: "bellofestas.com.br", niche: "artigos para celebrações", audience: "Anfitriões de eventos e celebrações", tone: "Inspirador e acolhedor", styleNotes: "Parágrafos médios, tom emocional na abertura.", status: "concluído", color: "mint", keywords: ["festa personalizada", "lembrancinhas", "decoração"] },
@@ -119,9 +137,14 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
+  const [aiSettings, setAiSettings] = useState<AiSettingsState | null>(null);
+  const [aiSettingsLoaded, setAiSettingsLoaded] = useState(false);
+  const [aiForm, setAiForm] = useState({ provider: "GEMINI" as AiProviderName, model: "", apiKey: "" });
+  const [isSavingAiSettings, setIsSavingAiSettings] = useState(false);
   const isAdmin = currentUser?.role === "ADMIN";
   const isLoadingUsers = activeNav === "Usuários" && isAdmin && !usersLoaded;
-  const navItems = isAdmin ? [...baseNavItems, ["Usuários", "◈"] as const] : baseNavItems;
+  const isLoadingAiSettings = activeNav === "Modelo de IA" && isAdmin && !aiSettingsLoaded;
+  const navItems = isAdmin ? [...baseNavItems, ["Usuários", "◈"] as const, ["Modelo de IA", "◆"] as const] : baseNavItems;
 
   const currentSite = sites.find((site) => siteKey(site) === selectedSite) ?? sites[0];
 
@@ -145,6 +168,42 @@ export default function Home() {
         setUsersLoaded(true);
       });
   }, [isLoadingUsers]);
+
+  useEffect(() => {
+    if (!isLoadingAiSettings) return;
+    fetch("/api/settings/ai")
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: AiSettingsState) => {
+        setAiSettings(data);
+        setAiForm({ provider: data.provider, model: data.model, apiKey: "" });
+        setAiSettingsLoaded(true);
+      })
+      .catch(() => {
+        setSiteError("Não foi possível carregar a configuração de IA.");
+        setAiSettingsLoaded(true);
+      });
+  }, [isLoadingAiSettings]);
+
+  async function saveAiSettings() {
+    if (!aiForm.model.trim() || (!aiForm.apiKey.trim() && !aiSettings?.hasApiKey)) return;
+    setIsSavingAiSettings(true);
+    try {
+      const response = await fetch("/api/settings/ai", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: aiForm.provider, model: aiForm.model.trim(), apiKey: aiForm.apiKey.trim() }),
+      });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Não foi possível salvar a configuração");
+      const updated = (await response.json()) as AiSettingsState;
+      setAiSettings(updated);
+      setAiForm({ provider: updated.provider, model: updated.model, apiKey: "" });
+      setScanMessage("Configuração de IA salva.");
+    } catch (error) {
+      setSiteError(error instanceof Error ? error.message : "Não foi possível salvar a configuração de IA");
+    } finally {
+      setIsSavingAiSettings(false);
+    }
+  }
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -190,12 +249,12 @@ export default function Home() {
     images.forEach((image) => formData.append("imagens", image));
     try {
       const response = await fetch("/api/gerar-conteudo", { method: "POST", body: formData });
-      if (!response.ok) throw new Error("Não foi possível gerar o conteúdo");
-      const result = (await response.json()) as GenerationResult;
-      setGenerationResult(result);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível gerar o conteúdo");
+      setGenerationResult(payload as GenerationResult);
       setGenerationsLoaded(false);
-    } catch {
-      setSiteError("Configure o banco e a chave da Anthropic para gerar conteúdo real.");
+    } catch (error) {
+      setSiteError(error instanceof Error ? error.message : "Não foi possível gerar o conteúdo");
     } finally {
       setIsOptimizing(false);
     }
@@ -388,6 +447,7 @@ export default function Home() {
         {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(key) => { setSelectedSite(key); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
         {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} />}
         {activeNav === "Usuários" && <UsersView users={users} isLoading={isLoadingUsers} currentUserId={currentUser?.id} onNew={() => setShowNewUser(true)} onToggleRole={toggleUserRole} onRemove={removeUser} />}
+        {activeNav === "Modelo de IA" && <AiSettingsView isLoading={isLoadingAiSettings} settings={aiSettings} form={aiForm} setForm={setAiForm} onSave={saveAiSettings} isSaving={isSavingAiSettings} />}
       </section>
 
       {showNewSite && (
@@ -595,6 +655,35 @@ function UsersView({ users, isLoading, currentUserId, onNew, onToggleRole, onRem
                 <button className="text-button danger" onClick={() => onRemove(user)} disabled={user.id === currentUserId}>Remover</button>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function AiSettingsView({ isLoading, settings, form, setForm, onSave, isSaving }: { isLoading: boolean; settings: AiSettingsState | null; form: { provider: AiProviderName; model: string; apiKey: string }; setForm: (updater: (current: { provider: AiProviderName; model: string; apiKey: string }) => { provider: AiProviderName; model: string; apiKey: string }) => void; onSave: () => void; isSaving: boolean }) {
+  return (
+    <>
+      <div className="page-heading"><div><p className="eyebrow">CONFIGURAÇÃO</p><h1>Modelo de IA <span>◆</span></h1><p className="subtitle">Escolha o provedor e a chave usados no scan e na geração de conteúdo.</p></div></div>
+      <section className="panel full-panel">
+        {isLoading ? (
+          <div className="history-empty"><div className="empty-sparkle">◆</div><h2>Carregando configuração...</h2></div>
+        ) : (
+          <div className="ai-settings-form">
+            <label>Provedor
+              <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as AiProviderName }))}>
+                {(Object.keys(AI_PROVIDER_LABELS) as AiProviderName[]).map((provider) => <option key={provider} value={provider}>{AI_PROVIDER_LABELS[provider]}</option>)}
+              </select>
+            </label>
+            <label>Modelo
+              <input value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} placeholder={AI_PROVIDER_HINTS[form.provider]} />
+            </label>
+            <label>Chave de API
+              <input type="password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={settings?.hasApiKey ? `Atual: ${settings.apiKeyMasked} — deixe em branco para manter` : "Cole a chave de API"} />
+            </label>
+            <button className="button button-dark" onClick={onSave} disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar configuração"}</button>
+            <p className="disclaimer">A chave fica salva no banco de dados, visível apenas para administradores (e sempre mascarada na tela).</p>
           </div>
         )}
       </section>
