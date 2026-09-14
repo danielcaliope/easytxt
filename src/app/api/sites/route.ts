@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const sites = await prisma.site.findMany({ orderBy: { criadoEm: "desc" } });
-  return NextResponse.json(sites);
+  try {
+    const sites = await prisma.site.findMany({ orderBy: { criadoEm: "desc" } });
+    return NextResponse.json(sites);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível carregar os sites";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -29,7 +34,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(site, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Não foi possível criar o site" }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível criar o site";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
