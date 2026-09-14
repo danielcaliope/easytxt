@@ -46,6 +46,13 @@ const AI_PROVIDER_HINTS: Record<AiProviderName, string> = {
   GROQ: "ex. openai/gpt-oss-20b",
 };
 
+const AI_PROVIDER_LINKS: Record<AiProviderName, { keysUrl: string; keysLabel: string; modelsUrl: string }> = {
+  GEMINI: { keysUrl: "https://aistudio.google.com/apikey", keysLabel: "aistudio.google.com/apikey", modelsUrl: "https://ai.google.dev/gemini-api/docs/models" },
+  OPENAI: { keysUrl: "https://platform.openai.com/api-keys", keysLabel: "platform.openai.com/api-keys", modelsUrl: "https://platform.openai.com/docs/models" },
+  ANTHROPIC: { keysUrl: "https://console.anthropic.com/settings/keys", keysLabel: "console.anthropic.com/settings/keys", modelsUrl: "https://docs.anthropic.com/en/docs/about-claude/models" },
+  GROQ: { keysUrl: "https://console.groq.com/keys", keysLabel: "console.groq.com/keys", modelsUrl: "https://console.groq.com/docs/models" },
+};
+
 const initialSites: Site[] = [
   { name: "Karol Festas", url: "karolfestas.com.br", niche: "artigos para festas infantis", audience: "Pais e organizadores de festa infantil", tone: "Alegre e próximo", styleNotes: "Frases curtas, CTA direto no fim do texto.", status: "concluído", color: "coral", keywords: ["decoração de festa", "festa infantil", "balões"] },
   { name: "Bello Festas", url: "bellofestas.com.br", niche: "artigos para celebrações", audience: "Anfitriões de eventos e celebrações", tone: "Inspirador e acolhedor", styleNotes: "Parágrafos médios, tom emocional na abertura.", status: "concluído", color: "mint", keywords: ["festa personalizada", "lembrancinhas", "decoração"] },
@@ -678,9 +685,11 @@ function AiSettingsView({ isLoading, settings, form, setForm, onSave, isSaving }
             </label>
             <label>Modelo
               <input value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} placeholder={AI_PROVIDER_HINTS[form.provider]} />
+              <small className="field-hint">Veja os nomes exatos em <a href={AI_PROVIDER_LINKS[form.provider].modelsUrl} target="_blank" rel="noreferrer">{AI_PROVIDER_LINKS[form.provider].modelsUrl.replace("https://", "")}</a></small>
             </label>
             <label>Chave de API
               <input type="password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={settings?.hasApiKey ? `Atual: ${settings.apiKeyMasked} — deixe em branco para manter` : "Cole a chave de API"} />
+              <small className="field-hint">Crie uma chave em <a href={AI_PROVIDER_LINKS[form.provider].keysUrl} target="_blank" rel="noreferrer">{AI_PROVIDER_LINKS[form.provider].keysLabel}</a></small>
             </label>
             <button className="button button-dark" onClick={onSave} disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar configuração"}</button>
             <p className="disclaimer">A chave fica salva no banco de dados, visível apenas para administradores (e sempre mascarada na tela).</p>
