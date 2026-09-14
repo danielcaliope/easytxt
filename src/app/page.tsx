@@ -43,7 +43,7 @@ const AI_PROVIDER_HINTS: Record<AiProviderName, string> = {
   GEMINI: "ex. gemini-3.6-flash",
   OPENAI: "ex. gpt-4o-mini",
   ANTHROPIC: "ex. claude-sonnet-5",
-  GROQ: "ex. llama-3.1-8b-instant",
+  GROQ: "ex. openai/gpt-oss-20b",
 };
 
 const initialSites: Site[] = [
