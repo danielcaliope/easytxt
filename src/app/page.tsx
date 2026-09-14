@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 
 const PALETTE = ["coral", "mint", "lilac", "yellow", "blue"] as const;
 
@@ -66,6 +66,10 @@ function mapApiGeneration(row: Record<string, unknown>): Generation {
   };
 }
 
+function siteKey(site: Site) {
+  return site.id ?? site.name;
+}
+
 function siteToForm(site: Site): SiteFormState {
   return { nome: site.name, url: site.url, nicho: site.niche === "Aguardando scan da IA" ? "" : site.niche, publicoAlvo: site.audience, tomDeVoz: site.tone === "A definir" ? "" : site.tone, palavrasChaveBase: site.keywords.join(", "), notasDeEstilo: site.styleNotes };
 }
@@ -73,7 +77,7 @@ function siteToForm(site: Site): SiteFormState {
 export default function Home() {
   const [activeNav, setActiveNav] = useState("Visão geral");
   const [sites, setSites] = useState(initialSites);
-  const [selectedSite, setSelectedSite] = useState(initialSites[0].name);
+  const [selectedSite, setSelectedSite] = useState(siteKey(initialSites[0]));
   const [sourceText, setSourceText] = useState("");
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [copied, setCopied] = useState("");
@@ -94,7 +98,7 @@ export default function Home() {
   const [generationsLoaded, setGenerationsLoaded] = useState(false);
   const isLoadingGenerations = activeNav === "Histórico" && !generationsLoaded;
 
-  const currentSite = sites.find((site) => site.name === selectedSite) ?? sites[0];
+  const currentSite = sites.find((site) => siteKey(site) === selectedSite) ?? sites[0];
 
   useEffect(() => {
     fetch("/api/sites")
@@ -106,7 +110,7 @@ export default function Home() {
         if (!data.length) return;
         const mapped = data.map(mapApiSite);
         setSites(mapped);
-        setSelectedSite(mapped[0].name);
+        setSelectedSite(siteKey(mapped[0]));
       })
       .catch(() => setSiteError("Banco ainda não conectado. Exibindo dados de demonstração."))
       .finally(() => setIsLoadingSites(false));
@@ -168,7 +172,7 @@ export default function Home() {
       if (!response.ok) throw new Error("Não foi possível criar o site");
       const created = mapApiSite(await response.json());
       setSites((current) => [...current, created]);
-      setSelectedSite(created.name);
+      setSelectedSite(siteKey(created));
       setNewSiteName("");
       setNewSiteUrl("");
       openEdit(created);
@@ -211,7 +215,7 @@ export default function Home() {
       if (!response.ok) throw new Error("Não foi possível salvar o site");
       const updated = mapApiSite(await response.json());
       setSites((current) => current.map((site) => (site.id === updated.id ? updated : site)));
-      setSelectedSite((current) => (current === editingSite.name ? updated.name : current));
+      setSelectedSite((current) => (current === siteKey(editingSite) ? siteKey(updated) : current));
       setScanMessage("Site salvo.");
       closeEdit();
     } catch {
@@ -276,14 +280,14 @@ export default function Home() {
         {activeNav === "Visão geral" && <>
           <div className="page-heading"><div><p className="eyebrow">SEGUNDA-FEIRA, 14 DE SETEMBRO</p><h1>Bom dia, Daniel <span>✦</span></h1><p className="subtitle">Seu conteúdo está pronto para ficar mais nítido.</p></div><div className="heading-note"><span className="status-dot green" />Tudo sincronizado<br /><small>última verificação há 8 min</small></div></div>
           <div className="metric-grid"><Metric label="Sites ativos" value={String(sites.length)} detail={`${sites.filter((s) => s.status === "concluído").length} perfis completos`} accent="coral" /><Metric label="Conteúdos otimizados" value="28" detail="↑ 18% este mês" accent="blue" /><Metric label="Score médio SEO" value="87" detail="↑ 6 pts este mês" accent="yellow" /><Metric label="Sugestões aplicadas" value="64" detail="de 79 recomendações" accent="mint" /></div>
-          <div className="dashboard-grid"><section className="panel sites-panel"><div className="panel-heading"><div><p className="section-kicker">SEUS SITES</p><h2>Perfis editoriais</h2></div><button className="text-button" onClick={() => setActiveNav("Sites e perfis")}>Ver todos <span>→</span></button></div><div className="site-list">{sites.map((site) => <SiteRow key={site.name} site={site} onClick={() => { setSelectedSite(site.name); setActiveNav("Gerar conteúdo"); }} />)}</div><button className="add-site-row" onClick={() => setShowNewSite(true)}><span>＋</span> Adicionar novo site</button></section><section className="panel activity-panel"><div className="panel-heading"><div><p className="section-kicker">ATIVIDADE RECENTE</p><h2>O que está acontecendo</h2></div><button className="icon-button small">···</button></div><div className="activity-list"><Activity icon="✦" color="coral" title="Conteúdo otimizado" description="Página de balões metalizados" time="há 12 min" /><Activity icon="↻" color="blue" title="Perfil atualizado" description="Bello Festas foi reescaneado" time="há 2 h" /><Activity icon="✓" color="mint" title="Meta aprovada" description="Coleção Festa Junina" time="ontem" /></div><div className="weekly-score"><div><span className="section-kicker">RITMO DA SEMANA</span><strong>12 conteúdos</strong></div><div className="mini-bars"><i /><i /><i /><i /><i /><i /><i /></div></div></section></div>
+          <div className="dashboard-grid"><section className="panel sites-panel"><div className="panel-heading"><div><p className="section-kicker">SEUS SITES</p><h2>Perfis editoriais</h2></div><button className="text-button" onClick={() => setActiveNav("Sites e perfis")}>Ver todos <span>→</span></button></div><div className="site-list">{sites.map((site) => <SiteRow key={siteKey(site)} site={site} onClick={() => { setSelectedSite(siteKey(site)); setActiveNav("Gerar conteúdo"); }} />)}</div><button className="add-site-row" onClick={() => setShowNewSite(true)}><span>＋</span> Adicionar novo site</button></section><section className="panel activity-panel"><div className="panel-heading"><div><p className="section-kicker">ATIVIDADE RECENTE</p><h2>O que está acontecendo</h2></div><button className="icon-button small">···</button></div><div className="activity-list"><Activity icon="✦" color="coral" title="Conteúdo otimizado" description="Página de balões metalizados" time="há 12 min" /><Activity icon="↻" color="blue" title="Perfil atualizado" description="Bello Festas foi reescaneado" time="há 2 h" /><Activity icon="✓" color="mint" title="Meta aprovada" description="Coleção Festa Junina" time="ontem" /></div><div className="weekly-score"><div><span className="section-kicker">RITMO DA SEMANA</span><strong>12 conteúdos</strong></div><div className="mini-bars"><i /><i /><i /><i /><i /><i /><i /></div></div></section></div>
           <div className="insight-banner"><div className="insight-icon">✦</div><div><strong>Uma oportunidade para hoje</strong><p>Conteúdos com resposta direta no primeiro parágrafo têm <b>2,4× mais chances</b> de serem citados por engines de IA.</p></div><button className="button button-outline" onClick={() => setActiveNav("Gerar conteúdo")}>Criar conteúdo <span>→</span></button></div>
         </>}
 
         {activeNav === "Gerar conteúdo" && (
-          <Generator currentSite={currentSite} sourceText={sourceText} setSourceText={setSourceText} optimize={() => optimize(sourceText, selectedImages)} isOptimizing={isOptimizing} result={generationResult} fileName={fileName} handleFile={handleFile} copied={copied} copyField={copyField} />
+          <Generator currentSite={currentSite} sites={sites} onSelectSite={setSelectedSite} sourceText={sourceText} setSourceText={setSourceText} optimize={() => optimize(sourceText, selectedImages)} isOptimizing={isOptimizing} result={generationResult} fileName={fileName} handleFile={handleFile} copied={copied} copyField={copyField} />
         )}
-        {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(name) => { setSelectedSite(name); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
+        {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(key) => { setSelectedSite(key); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
         {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} />}
       </section>
 
@@ -334,12 +338,41 @@ function Metric({ label, value, detail, accent }: { label: string; value: string
 function SiteRow({ site, onClick }: { site: Site; onClick: () => void }) { return <button className="site-row" onClick={onClick}><span className={`site-logo ${site.color}`}>{site.name.slice(0, 1)}</span><span className="site-info"><strong>{site.name}</strong><small>{site.url}</small></span><span className="site-niche">{site.niche}</span><span className={`scan-status ${site.status === "concluído" ? "done" : "waiting"}`}><i />{site.status}</span><span className="row-arrow">→</span></button>; }
 function Activity({ icon, color, title, description, time }: { icon: string; color: string; title: string; description: string; time: string }) { return <div className="activity-row"><span className={`activity-icon ${color}`}>{icon}</span><span><strong>{title}</strong><small>{description}</small></span><time>{time}</time></div>; }
 
-function Generator({ currentSite, sourceText, setSourceText, optimize, isOptimizing, result, fileName, handleFile, copied, copyField }: { currentSite: Site; sourceText: string; setSourceText: (value: string) => void; optimize: () => void; isOptimizing: boolean; result: GenerationResult | null; fileName: string; handleFile: (event: ChangeEvent<HTMLInputElement>) => void; copied: string; copyField: (label: string, value?: string) => void }) {
+function Generator({ currentSite, sites, onSelectSite, sourceText, setSourceText, optimize, isOptimizing, result, fileName, handleFile, copied, copyField }: { currentSite: Site; sites: Site[]; onSelectSite: (key: string) => void; sourceText: string; setSourceText: (value: string) => void; optimize: () => void; isOptimizing: boolean; result: GenerationResult | null; fileName: string; handleFile: (event: ChangeEvent<HTMLInputElement>) => void; copied: string; copyField: (label: string, value?: string) => void }) {
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcherRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!switcherOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (switcherRef.current && !switcherRef.current.contains(event.target as Node)) setSwitcherOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [switcherOpen]);
+
   return (
     <>
       <div className="page-heading generator-heading">
         <div><p className="eyebrow">ESTÚDIO DE CONTEÚDO</p><h1>Deixe seu texto mais nítido <span>✦</span></h1><p className="subtitle">SEO para ser encontrado. GEO para ser citado.</p></div>
-        <div className="selected-site"><span className={`site-logo ${currentSite.color}`}>{currentSite.name.slice(0, 1)}</span><span><small>PERFIL ATIVO</small><strong>{currentSite.name}</strong></span><span>⌄</span></div>
+        <div className="site-switcher" ref={switcherRef}>
+          <button className="selected-site" onClick={() => setSwitcherOpen((open) => !open)}>
+            <span className={`site-logo ${currentSite.color}`}>{currentSite.name.slice(0, 1)}</span>
+            <span><small>PERFIL ATIVO</small><strong>{currentSite.name}</strong></span>
+            <span className={switcherOpen ? "chevron-up" : ""}>⌄</span>
+          </button>
+          {switcherOpen && (
+            <div className="site-switcher-menu">
+              {sites.map((site) => (
+                <button key={siteKey(site)} className={`site-switcher-item ${siteKey(site) === siteKey(currentSite) ? "active" : ""}`} onClick={() => { onSelectSite(siteKey(site)); setSwitcherOpen(false); }}>
+                  <span className={`site-logo ${site.color}`}>{site.name.slice(0, 1)}</span>
+                  <span className="site-info"><strong>{site.name}</strong><small>{site.url}</small></span>
+                  {siteKey(site) === siteKey(currentSite) && <span className="switcher-check">✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div className="generator-layout">
         <section className="panel editor-panel">
@@ -373,7 +406,7 @@ function Generator({ currentSite, sourceText, setSourceText, optimize, isOptimiz
 
 function ResultCard({ label, title, value, copyLabel, copied, onCopy, large = false }: { label: string; title: string; value: string; copyLabel: string; copied: string; onCopy: (label: string, value?: string) => void; large?: boolean }) { return <div className={`result-card ${large ? "large" : ""}`}><div className="result-heading"><div><p className="section-kicker">{label}</p><h3>{title}</h3></div><button className="copy-button" onClick={() => onCopy(copyLabel, value)}>{copied === copyLabel ? "Copiado" : "⧉ Copiar"}</button></div><p className="result-value">{value}</p></div>; }
 
-function SitesView({ sites, onNew, onGenerate, onEdit }: { sites: Site[]; onNew: () => void; onGenerate: (name: string) => void; onEdit: (site: Site) => void }) {
+function SitesView({ sites, onNew, onGenerate, onEdit }: { sites: Site[]; onNew: () => void; onGenerate: (key: string) => void; onEdit: (site: Site) => void }) {
   return (
     <>
       <div className="page-heading"><div><p className="eyebrow">CONFIGURAÇÃO</p><h1>Sites e perfis <span>◎</span></h1><p className="subtitle">A personalidade de cada marca, em um só lugar.</p></div><button className="button button-dark" onClick={onNew}>＋ Novo site</button></div>
@@ -381,13 +414,13 @@ function SitesView({ sites, onNew, onGenerate, onEdit }: { sites: Site[]; onNew:
         <div className="panel-heading"><div><p className="section-kicker">PERFIS CADASTRADOS</p><h2>{sites.length} sites no workspace</h2></div><span className="panel-muted">Clique em um site para editar</span></div>
         <div className="site-table">
           {sites.map((site) => (
-            <div className="site-table-row" key={site.name} onClick={() => onEdit(site)} role="button" tabIndex={0}>
+            <div className="site-table-row" key={siteKey(site)} onClick={() => onEdit(site)} role="button" tabIndex={0}>
               <span className={`site-logo ${site.color}`}>{site.name.slice(0, 1)}</span>
               <span className="site-info"><strong>{site.name}</strong><small>{site.url}</small></span>
               <span className="table-detail"><small>NICHO</small>{site.niche}</span>
               <span className="table-detail"><small>TOM</small>{site.tone}</span>
               <span className={`scan-status ${site.status === "concluído" ? "done" : "waiting"}`}><i />{site.status}</span>
-              <button className="text-button" onClick={(event) => { event.stopPropagation(); onGenerate(site.name); }}>Gerar <span>→</span></button>
+              <button className="text-button" onClick={(event) => { event.stopPropagation(); onGenerate(siteKey(site)); }}>Gerar <span>→</span></button>
             </div>
           ))}
         </div>
