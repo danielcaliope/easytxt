@@ -83,6 +83,17 @@ const baseNavItems = [
   ["Histórico", "↺"],
 ] as const;
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 6 && hour < 12) return "Bom dia";
+  if (hour >= 12 && hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function getTodayLabel() {
+  return new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }).toUpperCase();
+}
+
 function mapApiSite(site: Record<string, unknown>, index = 0): Site {
   const status = site.statusScan === "CONCLUIDO" ? "concluído" : site.statusScan === "ERRO" ? "erro" : "pendente";
   return {
@@ -175,6 +186,8 @@ export default function Home() {
   const [historySiteFilter, setHistorySiteFilter] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [greeting, setGreeting] = useState("");
+  const [todayLabel, setTodayLabel] = useState("");
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [aiSettings, setAiSettings] = useState<AiSettingsState | null>(null);
@@ -193,6 +206,14 @@ export default function Home() {
       .then((response) => (response.ok ? response.json() : null))
       .then((data: CurrentUser | null) => setCurrentUser(data))
       .catch(() => setCurrentUser(null));
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setGreeting(getGreeting());
+      setTodayLabel(getTodayLabel());
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   useEffect(() => {
@@ -499,7 +520,7 @@ export default function Home() {
         {(siteError || scanMessage || isLoadingSites) && <div className="app-notice">{isLoadingSites ? "Sincronizando sites..." : siteError || scanMessage}<button onClick={() => { setSiteError(""); setScanMessage(""); }}>×</button></div>}
 
         {activeNav === "Visão geral" && <>
-          <div className="page-heading"><div><p className="eyebrow">SEGUNDA-FEIRA, 14 DE SETEMBRO</p><h1>Bom dia, {currentUser?.nome.split(" ")[0] ?? ""} <span>✦</span></h1><p className="subtitle">Seu conteúdo está pronto para ficar mais nítido.</p></div><div className="heading-note"><span className="status-dot green" />Tudo sincronizado<br /><small>última verificação há 8 min</small></div></div>
+          <div className="page-heading"><div><p className="eyebrow">{todayLabel}</p><h1>{greeting}, {currentUser?.nome.split(" ")[0] ?? ""} <span>✦</span></h1><p className="subtitle">Seu conteúdo está pronto para ficar mais nítido.</p></div><div className="heading-note"><span className="status-dot green" />Tudo sincronizado<br /><small>última verificação há 8 min</small></div></div>
           <div className="metric-grid"><Metric label="Sites ativos" value={String(sites.length)} detail={`${sites.filter((s) => s.status === "concluído").length} perfis completos`} accent="coral" /><Metric label="Conteúdos otimizados" value="28" detail="↑ 18% este mês" accent="blue" /><Metric label="Score médio SEO" value="87" detail="↑ 6 pts este mês" accent="yellow" /><Metric label="Sugestões aplicadas" value="64" detail="de 79 recomendações" accent="mint" /></div>
           <div className="dashboard-grid"><section className="panel sites-panel"><div className="panel-heading"><div><p className="section-kicker">SEUS SITES</p><h2>Perfis editoriais</h2></div><button className="text-button" onClick={() => setActiveNav("Sites e perfis")}>Ver todos <span>→</span></button></div><div className="site-list">{sites.map((site) => <SiteRow key={siteKey(site)} site={site} onClick={() => { setSelectedSite(siteKey(site)); setActiveNav("Gerar conteúdo"); }} />)}</div><button className="add-site-row" onClick={() => setShowNewSite(true)}><span>＋</span> Adicionar novo site</button></section><section className="panel activity-panel"><div className="panel-heading"><div><p className="section-kicker">ATIVIDADE RECENTE</p><h2>O que está acontecendo</h2></div><button className="icon-button small">···</button></div><div className="activity-list"><Activity icon="✦" color="coral" title="Conteúdo otimizado" description="Página de balões metalizados" time="há 12 min" /><Activity icon="↻" color="blue" title="Perfil atualizado" description="Bello Festas foi reescaneado" time="há 2 h" /><Activity icon="✓" color="mint" title="Meta aprovada" description="Coleção Festa Junina" time="ontem" /></div><div className="weekly-score"><div><span className="section-kicker">RITMO DA SEMANA</span><strong>12 conteúdos</strong></div><div className="mini-bars"><i /><i /><i /><i /><i /><i /><i /></div></div></section></div>
           <div className="insight-banner"><div className="insight-icon">✦</div><div><strong>Uma oportunidade para hoje</strong><p>Conteúdos com resposta direta no primeiro parágrafo têm <b>2,4× mais chances</b> de serem citados por engines de IA.</p></div><button className="button button-outline" onClick={() => setActiveNav("Gerar conteúdo")}>Criar conteúdo <span>→</span></button></div>
