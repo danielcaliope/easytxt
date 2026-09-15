@@ -29,7 +29,7 @@ type SiteFormState = { nome: string; url: string; nicho: string; publicoAlvo: st
 
 type GenerationResult = { texto_otimizado: string; meta_title: string; meta_description: string; palavras_chave_usadas: string[]; palavras_chave_sugeridas: string[]; alt_texts: string[] };
 
-type Generation = { id: string; siteName: string; textoOtimizado: string; metaTitle: string; metaDescription: string; palavrasChaveUsadas: string[]; altTexts: string[]; criadoEm: string };
+type Generation = { id: string; siteId: string; siteName: string; userName: string; textoOtimizado: string; metaTitle: string; metaDescription: string; palavrasChaveUsadas: string[]; altTexts: string[]; criadoEm: string };
 
 type CurrentUser = { id: string; nome: string; email: string; role: "ADMIN" | "MEMBRO" };
 
@@ -89,11 +89,24 @@ function mapApiSite(site: Record<string, unknown>, index = 0): Site {
   };
 }
 
+function stripMarkdown(text: string) {
+  return text
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/\n+/g, " ")
+    .trim();
+}
+
 function mapApiGeneration(row: Record<string, unknown>): Generation {
   const site = row.site as Record<string, unknown> | undefined;
+  const user = row.user as Record<string, unknown> | undefined;
   return {
     id: String(row.id ?? ""),
+    siteId: String(row.siteId ?? ""),
     siteName: String(site?.nome ?? "Site removido"),
+    userName: String(user?.nome ?? "Sem autor registrado"),
     textoOtimizado: String(row.textoOtimizado ?? ""),
     metaTitle: String(row.metaTitle ?? ""),
     metaDescription: String(row.metaDescription ?? ""),
@@ -148,7 +161,9 @@ export default function Home() {
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [generationsLoaded, setGenerationsLoaded] = useState(false);
-  const isLoadingGenerations = activeNav === "Histórico" && !generationsLoaded;
+  const [isLoadingGenerations, setIsLoadingGenerations] = useState(false);
+  const [historySiteFilter, setHistorySiteFilter] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
@@ -242,18 +257,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!isLoadingGenerations) return;
-    fetch("/api/geracoes")
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((data: Array<Record<string, unknown>>) => {
-        setGenerations(data.map(mapApiGeneration));
-        setGenerationsLoaded(true);
-      })
-      .catch(() => {
-        setSiteError("Não foi possível carregar o histórico.");
-        setGenerationsLoaded(true);
-      });
-  }, [isLoadingGenerations]);
+    if (activeNav !== "Histórico") return;
+    const timeout = window.setTimeout(() => {
+      setIsLoadingGenerations(true);
+      const params = new URLSearchParams();
+      if (historySiteFilter) params.set("site_id", historySiteFilter);
+      if (historySearch.trim()) params.set("q", historySearch.trim());
+      fetch(`/api/geracoes?${params.toString()}`)
+        .then((response) => (response.ok ? response.json() : Promise.reject()))
+        .then((data: Array<Record<string, unknown>>) => {
+          setGenerations(data.map(mapApiGeneration));
+          setGenerationsLoaded(true);
+        })
+        .catch(() => setSiteError("Não foi possível carregar o histórico."))
+        .finally(() => setIsLoadingGenerations(false));
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [activeNav, historySiteFilter, historySearch]);
 
   async function optimize(text: string, images: File[]) {
     if (!text.trim()) return;
@@ -460,7 +480,7 @@ export default function Home() {
           <Generator currentSite={currentSite} sites={sites} onSelectSite={setSelectedSite} editorRef={editorRef} sourceLength={sourceLength} onLengthChange={setSourceLength} optimize={() => optimize(editorRef.current?.getMarkdown() ?? "", selectedImages)} isOptimizing={isOptimizing} result={generationResult} fileName={fileName} handleFile={handleFile} copied={copied} copyField={copyField} />
         )}
         {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(key) => { setSelectedSite(key); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
-        {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} />}
+        {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} sites={sites} siteFilter={historySiteFilter} onSiteFilterChange={setHistorySiteFilter} search={historySearch} onSearchChange={setHistorySearch} />}
         {activeNav === "Usuários" && <UsersView users={users} isLoading={isLoadingUsers} currentUserId={currentUser?.id} onNew={() => setShowNewUser(true)} onToggleRole={toggleUserRole} onRemove={removeUser} />}
         {activeNav === "Modelo de IA" && <AiSettingsView isLoading={isLoadingAiSettings} settings={aiSettings} form={aiForm} setForm={setAiForm} onSave={saveAiSettings} isSaving={isSavingAiSettings} />}
       </section>
@@ -691,22 +711,33 @@ function SitesView({ sites, onNew, onGenerate, onEdit }: { sites: Site[]; onNew:
   );
 }
 
-function HistoryView({ generations, isLoading, copied, copyField }: { generations: Generation[]; isLoading: boolean; copied: string; copyField: (label: string, value?: string) => void }) {
+function HistoryView({ generations, isLoading, copied, copyField, sites, siteFilter, onSiteFilterChange, search, onSearchChange }: { generations: Generation[]; isLoading: boolean; copied: string; copyField: (label: string, value?: string) => void; sites: Site[]; siteFilter: string; onSiteFilterChange: (siteId: string) => void; search: string; onSearchChange: (value: string) => void }) {
+  const hasFilters = Boolean(siteFilter || search.trim());
   return (
     <>
       <div className="page-heading"><div><p className="eyebrow">ARQUIVO</p><h1>Histórico <span>↺</span></h1><p className="subtitle">Tudo o que já ganhou uma versão mais nítida.</p></div></div>
+      <div className="history-filters">
+        <select value={siteFilter} onChange={(event) => onSiteFilterChange(event.target.value)}>
+          <option value="">Todos os sites</option>
+          {sites.filter((site) => site.id).map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+        </select>
+        <input type="search" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Buscar por título ou texto..." />
+      </div>
       <section className="panel full-panel">
         {isLoading ? (
           <div className="history-empty"><div className="empty-sparkle">↺</div><h2>Carregando histórico...</h2></div>
         ) : generations.length === 0 ? (
-          <div className="history-empty"><div className="empty-sparkle">↺</div><h2>Seu histórico começa aqui</h2><p>Os conteúdos otimizados aparecerão nesta lista assim que você gerar o primeiro.</p></div>
+          <div className="history-empty">
+            <div className="empty-sparkle">↺</div>
+            {hasFilters ? <><h2>Nada encontrado</h2><p>Ajuste a busca ou o site selecionado.</p></> : <><h2>Seu histórico começa aqui</h2><p>Os conteúdos otimizados aparecerão nesta lista assim que você gerar o primeiro.</p></>}
+          </div>
         ) : (
           <div className="history-list">
             {generations.map((generation) => (
               <div className="history-row" key={generation.id}>
-                <div className="history-row-top"><strong>{generation.siteName}</strong><time>{new Date(generation.criadoEm).toLocaleString("pt-BR")}</time></div>
+                <div className="history-row-top"><strong>{generation.siteName}</strong><span className="history-author">por {generation.userName}</span><time>{new Date(generation.criadoEm).toLocaleString("pt-BR")}</time></div>
                 <p className="history-title">{generation.metaTitle || "Sem meta title"}</p>
-                <p className="history-preview">{generation.textoOtimizado.slice(0, 220)}{generation.textoOtimizado.length > 220 ? "…" : ""}</p>
+                <p className="history-preview">{(() => { const plain = stripMarkdown(generation.textoOtimizado); return `${plain.slice(0, 220)}${plain.length > 220 ? "…" : ""}`; })()}</p>
                 <button className="copy-button" onClick={() => copyField(`hist-${generation.id}`, generation.textoOtimizado)}>{copied === `hist-${generation.id}` ? "Copiado" : "⧉ Copiar texto"}</button>
               </div>
             ))}

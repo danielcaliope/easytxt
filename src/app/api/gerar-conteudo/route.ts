@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
 import { generateJsonText, getAiConfig } from "@/lib/ai-provider";
 
 const GENERATION_PROMPT = `Você é um redator especializado em SEO e GEO (Generative Engine Optimization) para e-commerce. Escreva para o site "{{nome}}" ({{url}}), no nicho de {{nicho}}, para {{publico}}. O tom de voz é: {{tom}}. Notas de estilo: {{notas}}. Palavras-chave centrais: {{keywords}}.
@@ -15,7 +16,8 @@ type GenerationResult = { texto_otimizado: string; meta_title: string; meta_desc
 function parseResult(raw: string): GenerationResult {
   const parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim()) as Partial<GenerationResult>;
   return {
-    texto_otimizado: typeof parsed.texto_otimizado === "string" ? parsed.texto_otimizado : "",
+    // Alguns modelos (ex. Groq) escapam a quebra de linha duas vezes, deixando "\n" literal no texto.
+    texto_otimizado: typeof parsed.texto_otimizado === "string" ? parsed.texto_otimizado.replace(/\\n/g, "\n") : "",
     meta_title: typeof parsed.meta_title === "string" ? parsed.meta_title : "",
     meta_description: typeof parsed.meta_description === "string" ? parsed.meta_description : "",
     palavras_chave_usadas: Array.isArray(parsed.palavras_chave_usadas) ? parsed.palavras_chave_usadas.filter((item): item is string => typeof item === "string") : [],
@@ -43,10 +45,11 @@ export async function POST(request: Request) {
       images.push({ mimeType: image.type, data: base64 });
     }
 
+    const currentUser = await getCurrentUser();
     const config = await getAiConfig();
     const raw = await generateJsonText(config, { systemPrompt, userText: `Texto original:\n${textoOriginal}`, images, maxOutputTokens: 6_000 });
     const result = parseResult(raw);
-    const saved = await prisma.geracaoDeConteudo.create({ data: { siteId, textoOriginal, textoOtimizado: result.texto_otimizado, metaTitle: result.meta_title, metaDescription: result.meta_description, palavrasChaveUsadas: result.palavras_chave_usadas, palavrasChaveSugeridas: result.palavras_chave_sugeridas, altTexts: result.alt_texts } });
+    const saved = await prisma.geracaoDeConteudo.create({ data: { siteId, userId: currentUser?.id, textoOriginal, textoOtimizado: result.texto_otimizado, metaTitle: result.meta_title, metaDescription: result.meta_description, palavrasChaveUsadas: result.palavras_chave_usadas, palavrasChaveSugeridas: result.palavras_chave_sugeridas, altTexts: result.alt_texts } });
     return NextResponse.json({ ...result, id: saved.id, criado_em: saved.criadoEm });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível gerar o conteúdo";

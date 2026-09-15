@@ -37,13 +37,14 @@ model AiSettings {
 }
 
 model User {
-  id        String    @id @default(cuid())
+  id        String              @id @default(cuid())
   nome      String
-  email     String    @unique
-  senhaHash String    @map("senha_hash")
-  role      UserRole  @default(MEMBRO)
-  criadoEm  DateTime  @default(now()) @map("criado_em")
+  email     String              @unique
+  senhaHash String              @map("senha_hash")
+  role      UserRole            @default(MEMBRO)
+  criadoEm  DateTime            @default(now()) @map("criado_em")
   sessions  Session[]
+  geracoes  GeracaoDeConteudo[]
 
   @@map("users")
 }
@@ -81,6 +82,7 @@ model Site {
 model GeracaoDeConteudo {
   id                    String   @id @default(cuid())
   siteId                String   @map("site_id")
+  userId                String?  @map("user_id")
   textoOriginal         String   @map("texto_original") @db.Text
   textoOtimizado        String   @map("texto_otimizado") @db.Text
   metaTitle             String   @map("meta_title")
@@ -90,6 +92,7 @@ model GeracaoDeConteudo {
   altTexts              String[] @default([]) @map("alt_texts")
   criadoEm              DateTime @default(now()) @map("criado_em")
   site                  Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  user                  User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([siteId, criadoEm])
   @@map("geracoes_de_conteudo")
