@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { generateJsonText, getAiConfig } from "@/lib/ai-provider";
+import { compressImage, type OptimizedImage } from "@/lib/image-optimizer";
 
 const GENERATION_PROMPT = `Você é um redator especializado em SEO e GEO (Generative Engine Optimization) para e-commerce. Escreva para o site "{{nome}}" ({{url}}), no nicho de {{nicho}}, para {{publico}}. O tom de voz é: {{tom}}. Notas de estilo: {{notas}}. Palavras-chave centrais: {{keywords}}.
 
@@ -38,19 +39,39 @@ export async function POST(request: Request) {
     const systemPrompt = GENERATION_PROMPT.replace("{{nome}}", site.nome).replace("{{url}}", site.url).replace("{{nicho}}", site.nicho).replace("{{publico}}", site.publicoAlvo).replace("{{tom}}", site.tomDeVoz).replace("{{notas}}", site.notasDeEstilo).replace("{{keywords}}", site.palavrasChaveBase.join(", "));
 
     const images: { mimeType: string; data: string }[] = [];
+    const optimizedImages: OptimizedImage[] = [];
     const imageFiles = form.getAll("imagens").filter((value): value is File => value instanceof File && value.size > 0);
     for (const image of imageFiles.slice(0, 5)) {
       if (!["image/jpeg", "image/png", "image/gif", "image/webp"].includes(image.type)) continue;
-      const base64 = Buffer.from(await image.arrayBuffer()).toString("base64");
-      images.push({ mimeType: image.type, data: base64 });
+      const buffer = Buffer.from(await image.arrayBuffer());
+      images.push({ mimeType: image.type, data: buffer.toString("base64") });
+      try {
+        optimizedImages.push(await compressImage(buffer, image.name || "imagem"));
+      } catch {
+        // Uma falha ao comprimir não deve impedir a geração do restante do conteúdo.
+      }
     }
 
     const currentUser = await getCurrentUser();
     const config = await getAiConfig();
-    const raw = await generateJsonText(config, { systemPrompt, userText: `Texto original:\n${textoOriginal}`, images, maxOutputTokens: 6_000 });
+    const userText = `Texto original:\n${textoOriginal}`;
+    let raw: string;
+    let sawImages = images.length > 0;
+    try {
+      raw = await generateJsonText(config, { systemPrompt, userText, images, maxOutputTokens: 6_000 });
+    } catch (error) {
+      // Nem todo modelo aceita imagens (ex. modelos só-texto na Groq). Se falhar com imagens
+      // anexadas, tenta de novo sem elas — o texto e a compressão de imagem não dependem disso.
+      if (images.length === 0) throw error;
+      sawImages = false;
+      raw = await generateJsonText(config, { systemPrompt, userText, images: [], maxOutputTokens: 6_000 });
+    }
     const result = parseResult(raw);
+    // Sem ter visto a imagem de verdade, qualquer alt text seria um chute genérico — melhor
+    // deixar em branco do que publicar uma descrição inventada.
+    if (!sawImages) result.alt_texts = [];
     const saved = await prisma.geracaoDeConteudo.create({ data: { siteId, userId: currentUser?.id, textoOriginal, textoOtimizado: result.texto_otimizado, metaTitle: result.meta_title, metaDescription: result.meta_description, palavrasChaveUsadas: result.palavras_chave_usadas, palavrasChaveSugeridas: result.palavras_chave_sugeridas, altTexts: result.alt_texts } });
-    return NextResponse.json({ ...result, id: saved.id, criado_em: saved.criadoEm });
+    return NextResponse.json({ ...result, id: saved.id, criado_em: saved.criadoEm, imagens_otimizadas: optimizedImages });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível gerar o conteúdo";
     return NextResponse.json({ error: message }, { status: 500 });

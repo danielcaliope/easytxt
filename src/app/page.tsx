@@ -12,6 +12,9 @@ export type RichTextEditorHandle = { getMarkdown: () => string; isEmpty: () => b
 
 const PALETTE = ["coral", "mint", "lilac", "yellow", "blue"] as const;
 
+// A Vercel limita o corpo da requisição a ~4,5 MB; deixamos margem pro texto e overhead do multipart.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 type Site = {
   id?: string;
   name: string;
@@ -27,7 +30,14 @@ type Site = {
 
 type SiteFormState = { nome: string; url: string; nicho: string; publicoAlvo: string; tomDeVoz: string; palavrasChaveBase: string; notasDeEstilo: string };
 
-type GenerationResult = { texto_otimizado: string; meta_title: string; meta_description: string; palavras_chave_usadas: string[]; palavras_chave_sugeridas: string[]; alt_texts: string[] };
+type OptimizedImage = { nome: string; tipo: string; tamanhoOriginal: number; tamanhoOtimizado: number; dataUrl: string };
+
+type GenerationResult = { texto_otimizado: string; meta_title: string; meta_description: string; palavras_chave_usadas: string[]; palavras_chave_sugeridas: string[]; alt_texts: string[]; imagens_otimizadas?: OptimizedImage[] };
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
 
 type Generation = { id: string; siteId: string; siteName: string; userName: string; textoOtimizado: string; metaTitle: string; metaDescription: string; palavrasChaveUsadas: string[]; altTexts: string[]; criadoEm: string };
 
@@ -437,6 +447,14 @@ export default function Home() {
 
   function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalBytes > MAX_UPLOAD_BYTES) {
+      setSiteError(`As imagens somam ${(totalBytes / 1024 / 1024).toFixed(1)} MB, acima do limite de ${MAX_UPLOAD_BYTES / 1024 / 1024} MB por envio. Selecione menos imagens ou arquivos menores.`);
+      event.target.value = "";
+      setSelectedImages([]);
+      setFileName("");
+      return;
+    }
     setSelectedImages(files);
     setFileName(files.length > 1 ? `${files.length} imagens selecionadas` : files[0]?.name ?? "");
   }
@@ -642,6 +660,26 @@ function Generator({ currentSite, sites, onSelectSite, editorRef, sourceLength, 
               <ResultCard label="META TITLE" title="Título para busca" value={result.meta_title || "A IA não retornou este campo."} copyLabel="meta title" copied={copied} onCopy={copyField} />
               <ResultCard label="META DESCRIPTION" title="Descrição para busca" value={result.meta_description || "A IA não retornou este campo."} copyLabel="meta description" copied={copied} onCopy={copyField} />
               {result.alt_texts.length > 0 && <ResultCard label="ALT TEXTS" title="Texto alternativo das imagens" value={result.alt_texts.join("\n")} copyLabel="alt texts" copied={copied} onCopy={copyField} />}
+              {result.imagens_otimizadas && result.imagens_otimizadas.length > 0 && (
+                <div className="result-card">
+                  <div className="result-heading"><div><p className="section-kicker">IMAGENS</p><h3>Versões comprimidas, prontas pro site</h3></div></div>
+                  <div className="optimized-images">
+                    {result.imagens_otimizadas.map((image, index) => {
+                      const reduction = image.tamanhoOriginal > 0 ? Math.round((1 - image.tamanhoOtimizado / image.tamanhoOriginal) * 100) : 0;
+                      return (
+                        <div className="optimized-image-row" key={`${image.nome}-${index}`}>
+                          <img src={image.dataUrl} alt="" className="optimized-image-thumb" />
+                          <div className="optimized-image-info">
+                            <strong>{image.nome}</strong>
+                            <small>{formatBytes(image.tamanhoOriginal)} → {formatBytes(image.tamanhoOtimizado)}{reduction > 0 ? ` (−${reduction}%)` : ""}</small>
+                          </div>
+                          <a className="button button-quiet" href={image.dataUrl} download={image.nome}>Baixar</a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="keyword-card">
                 <div className="result-heading"><div><p className="section-kicker">SINAIS DE RELEVÂNCIA</p><h3>Palavras-chave</h3></div><span className="ai-badge">IA</span></div>
                 <div className="keyword-group"><small>USADAS</small><div>{result.palavras_chave_usadas.length ? result.palavras_chave_usadas.map((keyword) => <span className="keyword used" key={keyword}>{keyword}</span>) : <span className="keyword-empty">Nenhuma retornada</span>}</div></div>
