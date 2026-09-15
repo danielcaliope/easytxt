@@ -1,7 +1,14 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, forwardRef, RefObject, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import TurndownService from "turndown";
+
+const turndownService = new TurndownService({ headingStyle: "atx", bulletListMarker: "-" });
+
+export type RichTextEditorHandle = { getMarkdown: () => string; isEmpty: () => boolean; clear: () => void };
 
 const PALETTE = ["coral", "mint", "lilac", "yellow", "blue"] as const;
 
@@ -119,7 +126,8 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("Visão geral");
   const [sites, setSites] = useState(initialSites);
   const [selectedSite, setSelectedSite] = useState(siteKey(initialSites[0]));
-  const [sourceText, setSourceText] = useState("");
+  const editorRef = useRef<RichTextEditorHandle>(null);
+  const [sourceLength, setSourceLength] = useState(0);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [copied, setCopied] = useState("");
   const [fileName, setFileName] = useState("");
@@ -449,7 +457,7 @@ export default function Home() {
         </>}
 
         {activeNav === "Gerar conteúdo" && (
-          <Generator currentSite={currentSite} sites={sites} onSelectSite={setSelectedSite} sourceText={sourceText} setSourceText={setSourceText} optimize={() => optimize(sourceText, selectedImages)} isOptimizing={isOptimizing} result={generationResult} fileName={fileName} handleFile={handleFile} copied={copied} copyField={copyField} />
+          <Generator currentSite={currentSite} sites={sites} onSelectSite={setSelectedSite} editorRef={editorRef} sourceLength={sourceLength} onLengthChange={setSourceLength} optimize={() => optimize(editorRef.current?.getMarkdown() ?? "", selectedImages)} isOptimizing={isOptimizing} result={generationResult} fileName={fileName} handleFile={handleFile} copied={copied} copyField={copyField} />
         )}
         {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(key) => { setSelectedSite(key); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
         {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} />}
@@ -525,7 +533,46 @@ function Metric({ label, value, detail, accent }: { label: string; value: string
 function SiteRow({ site, onClick }: { site: Site; onClick: () => void }) { return <button className="site-row" onClick={onClick}><span className={`site-logo ${site.color}`}>{site.name.slice(0, 1)}</span><span className="site-info"><strong>{site.name}</strong><small>{site.url}</small></span><span className="site-niche">{site.niche}</span><span className={`scan-status ${site.status === "concluído" ? "done" : "waiting"}`}><i />{site.status}</span><span className="row-arrow">→</span></button>; }
 function Activity({ icon, color, title, description, time }: { icon: string; color: string; title: string; description: string; time: string }) { return <div className="activity-row"><span className={`activity-icon ${color}`}>{icon}</span><span><strong>{title}</strong><small>{description}</small></span><time>{time}</time></div>; }
 
-function Generator({ currentSite, sites, onSelectSite, sourceText, setSourceText, optimize, isOptimizing, result, fileName, handleFile, copied, copyField }: { currentSite: Site; sites: Site[]; onSelectSite: (key: string) => void; sourceText: string; setSourceText: (value: string) => void; optimize: () => void; isOptimizing: boolean; result: GenerationResult | null; fileName: string; handleFile: (event: ChangeEvent<HTMLInputElement>) => void; copied: string; copyField: (label: string, value?: string) => void }) {
+const RichTextEditor = forwardRef<RichTextEditorHandle, { onLengthChange: (length: number) => void; placeholder: string }>(function RichTextEditor({ onLengthChange, placeholder }, ref) {
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    getMarkdown: () => turndownService.turndown(editorRef.current?.innerHTML ?? ""),
+    isEmpty: () => (editorRef.current?.innerText.trim().length ?? 0) === 0,
+    clear: () => {
+      if (editorRef.current) editorRef.current.innerHTML = "";
+      onLengthChange(0);
+    },
+  }));
+
+  function exec(command: string, value?: string) {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    onLengthChange(editorRef.current?.innerText.length ?? 0);
+  }
+
+  return (
+    <div className="rich-editor">
+      <div className="rich-editor-toolbar">
+        <button type="button" title="Negrito" onMouseDown={(event) => event.preventDefault()} onClick={() => exec("bold")}><b>N</b></button>
+        <button type="button" title="Itálico" onMouseDown={(event) => event.preventDefault()} onClick={() => exec("italic")}><i>I</i></button>
+        <button type="button" title="Título" onMouseDown={(event) => event.preventDefault()} onClick={() => exec("formatBlock", "<h3>")}>Título</button>
+        <button type="button" title="Lista" onMouseDown={(event) => event.preventDefault()} onClick={() => exec("insertUnorderedList")}>Lista</button>
+        <button type="button" title="Limpar formatação" onMouseDown={(event) => event.preventDefault()} onClick={() => exec("removeFormat")}>Limpar</button>
+      </div>
+      <div
+        ref={editorRef}
+        className="rich-editor-content content-textarea"
+        contentEditable
+        suppressContentEditableWarning
+        data-placeholder={placeholder}
+        onInput={(event) => onLengthChange(event.currentTarget.innerText.length)}
+      />
+    </div>
+  );
+});
+
+function Generator({ currentSite, sites, onSelectSite, editorRef, sourceLength, onLengthChange, optimize, isOptimizing, result, fileName, handleFile, copied, copyField }: { currentSite: Site; sites: Site[]; onSelectSite: (key: string) => void; editorRef: RefObject<RichTextEditorHandle | null>; sourceLength: number; onLengthChange: (length: number) => void; optimize: () => void; isOptimizing: boolean; result: GenerationResult | null; fileName: string; handleFile: (event: ChangeEvent<HTMLInputElement>) => void; copied: string; copyField: (label: string, value?: string) => void }) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
 
@@ -563,15 +610,15 @@ function Generator({ currentSite, sites, onSelectSite, sourceText, setSourceText
       </div>
       <div className="generator-layout">
         <section className="panel editor-panel">
-          <div className="editor-top"><div><p className="section-kicker">TEXTO ORIGINAL</p><h2>O que você quer otimizar?</h2></div><span className="counter">{sourceText.length} / 5.000</span></div>
-          <textarea className="content-textarea" value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Cole aqui o texto do produto, categoria ou página que você quer melhorar..." />
-          <div className="editor-footer"><label className="upload-button"><span>⊙</span>{fileName || "Adicionar imagens"}<input type="file" accept="image/*" multiple onChange={handleFile} /></label><button className="button button-dark optimize-button" onClick={optimize} disabled={isOptimizing || !sourceText.trim()}>{isOptimizing ? "Analisando..." : "Otimizar texto"}<span>{isOptimizing ? "◌" : "✦"}</span></button></div>
+          <div className="editor-top"><div><p className="section-kicker">TEXTO ORIGINAL</p><h2>O que você quer otimizar?</h2></div><span className="counter">{sourceLength} / 5.000</span></div>
+          <RichTextEditor ref={editorRef} onLengthChange={onLengthChange} placeholder="Cole aqui o texto do produto, categoria ou página que você quer melhorar..." />
+          <div className="editor-footer"><label className="upload-button"><span>⊙</span>{fileName || "Adicionar imagens"}<input type="file" accept="image/*" multiple onChange={handleFile} /></label><button className="button button-dark optimize-button" onClick={optimize} disabled={isOptimizing || sourceLength === 0}>{isOptimizing ? "Analisando..." : "Otimizar texto"}<span>{isOptimizing ? "◌" : "✦"}</span></button></div>
           <div className="editor-hint"><span>◎</span> Usando o perfil de <b>{currentSite.name}</b> · {currentSite.tone}</div>
         </section>
         <section className="results-column">
           {result ? (
             <>
-              <ResultCard label="TEXTO OTIMIZADO" title="Uma versão pronta para publicar" value={result.texto_otimizado || "A IA não retornou este campo."} copyLabel="texto" copied={copied} onCopy={copyField} large />
+              <ResultCard label="TEXTO OTIMIZADO" title="Uma versão pronta para publicar" value={result.texto_otimizado || "A IA não retornou este campo."} copyLabel="texto" copied={copied} onCopy={copyField} large markdown />
               <ResultCard label="META TITLE" title="Título para busca" value={result.meta_title || "A IA não retornou este campo."} copyLabel="meta title" copied={copied} onCopy={copyField} />
               <ResultCard label="META DESCRIPTION" title="Descrição para busca" value={result.meta_description || "A IA não retornou este campo."} copyLabel="meta description" copied={copied} onCopy={copyField} />
               {result.alt_texts.length > 0 && <ResultCard label="ALT TEXTS" title="Texto alternativo das imagens" value={result.alt_texts.join("\n")} copyLabel="alt texts" copied={copied} onCopy={copyField} />}
@@ -591,7 +638,35 @@ function Generator({ currentSite, sites, onSelectSite, sourceText, setSourceText
   );
 }
 
-function ResultCard({ label, title, value, copyLabel, copied, onCopy, large = false }: { label: string; title: string; value: string; copyLabel: string; copied: string; onCopy: (label: string, value?: string) => void; large?: boolean }) { return <div className={`result-card ${large ? "large" : ""}`}><div className="result-heading"><div><p className="section-kicker">{label}</p><h3>{title}</h3></div><button className="copy-button" onClick={() => onCopy(copyLabel, value)}>{copied === copyLabel ? "Copiado" : "⧉ Copiar"}</button></div><p className="result-value">{value}</p></div>; }
+function ResultCard({ label, title, value, copyLabel, copied, onCopy, large = false, markdown = false }: { label: string; title: string; value: string; copyLabel: string; copied: string; onCopy: (label: string, value?: string) => void; large?: boolean; markdown?: boolean }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  async function handleCopy() {
+    if (!markdown || !contentRef.current) {
+      onCopy(copyLabel, value);
+      return;
+    }
+    const html = contentRef.current.innerHTML;
+    const text = contentRef.current.innerText;
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      onCopy(copyLabel);
+    } catch {
+      onCopy(copyLabel, text);
+    }
+  }
+
+  return (
+    <div className={`result-card ${large ? "large" : ""}`}>
+      <div className="result-heading"><div><p className="section-kicker">{label}</p><h3>{title}</h3></div><button className="copy-button" onClick={handleCopy}>{copied === copyLabel ? "Copiado" : "⧉ Copiar"}</button></div>
+      <div className="result-value" ref={contentRef}>{markdown ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown> : value}</div>
+    </div>
+  );
+}
 
 function SitesView({ sites, onNew, onGenerate, onEdit }: { sites: Site[]; onNew: () => void; onGenerate: (key: string) => void; onEdit: (site: Site) => void }) {
   return (

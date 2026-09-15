@@ -6,6 +6,8 @@ const GENERATION_PROMPT = `Você é um redator especializado em SEO e GEO (Gener
 
 Reescreva o texto aplicando uso natural de palavras-chave, resposta direta no início, informação concreta e estrutura fácil de citar por engines de IA. Preserve o sentido original e o público. Para cada imagem anexada, gere um alt text descritivo e contextual.
 
+Formate "texto_otimizado" em Markdown: use "##"/"###" para títulos, "**texto**" para negrito, "*texto*" para itálico e "-" para listas, sempre que isso ajudar a organizar o conteúdo. Preserve qualquer formatação (negrito, itálico, títulos, listas) presente no texto original.
+
 Responda apenas com JSON neste formato: {"texto_otimizado":"","meta_title":"","meta_description":"","palavras_chave_usadas":[],"palavras_chave_sugeridas":[],"alt_texts":[]}`;
 
 type GenerationResult = { texto_otimizado: string; meta_title: string; meta_description: string; palavras_chave_usadas: string[]; palavras_chave_sugeridas: string[]; alt_texts: string[] };
