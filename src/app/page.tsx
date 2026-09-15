@@ -305,6 +305,17 @@ export default function Home() {
     }
   }
 
+  async function removeGeneration(generation: Generation) {
+    if (!window.confirm("Apagar esse item do histórico? Essa ação não pode ser desfeita.")) return;
+    try {
+      const response = await fetch(`/api/geracoes/${generation.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Não foi possível apagar o item");
+      setGenerations((current) => current.filter((item) => item.id !== generation.id));
+    } catch (error) {
+      setSiteError(error instanceof Error ? error.message : "Não foi possível apagar o item");
+    }
+  }
+
   function openEdit(site: Site) {
     setEditingSite(site);
     setEditForm(siteToForm(site));
@@ -498,7 +509,7 @@ export default function Home() {
           <Generator currentSite={currentSite} sites={sites} onSelectSite={setSelectedSite} editorRef={editorRef} sourceLength={sourceLength} onLengthChange={setSourceLength} optimize={() => optimize(editorRef.current?.getMarkdown() ?? "", selectedImages)} isOptimizing={isOptimizing} result={generationResult} fileName={fileName} handleFile={handleFile} copied={copied} copyField={copyField} />
         )}
         {activeNav === "Sites e perfis" && <SitesView sites={sites} onNew={() => setShowNewSite(true)} onGenerate={(key) => { setSelectedSite(key); setActiveNav("Gerar conteúdo"); }} onEdit={openEdit} />}
-        {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} sites={sites} siteFilter={historySiteFilter} onSiteFilterChange={setHistorySiteFilter} search={historySearch} onSearchChange={setHistorySearch} />}
+        {activeNav === "Histórico" && <HistoryView generations={generations} isLoading={isLoadingGenerations} copied={copied} copyField={copyField} sites={sites} siteFilter={historySiteFilter} onSiteFilterChange={setHistorySiteFilter} search={historySearch} onSearchChange={setHistorySearch} isAdmin={isAdmin} onRemove={removeGeneration} />}
         {activeNav === "Usuários" && <UsersView users={users} isLoading={isLoadingUsers} currentUserId={currentUser?.id} onNew={() => setShowNewUser(true)} onToggleRole={toggleUserRole} onRemove={removeUser} />}
         {activeNav === "Modelo de IA" && <AiSettingsView isLoading={isLoadingAiSettings} settings={aiSettings} form={aiForm} setForm={setAiForm} onSave={saveAiSettings} isSaving={isSavingAiSettings} />}
       </section>
@@ -749,7 +760,7 @@ function SitesView({ sites, onNew, onGenerate, onEdit }: { sites: Site[]; onNew:
   );
 }
 
-function HistoryView({ generations, isLoading, copied, copyField, sites, siteFilter, onSiteFilterChange, search, onSearchChange }: { generations: Generation[]; isLoading: boolean; copied: string; copyField: (label: string, value?: string) => void; sites: Site[]; siteFilter: string; onSiteFilterChange: (siteId: string) => void; search: string; onSearchChange: (value: string) => void }) {
+function HistoryView({ generations, isLoading, copied, copyField, sites, siteFilter, onSiteFilterChange, search, onSearchChange, isAdmin, onRemove }: { generations: Generation[]; isLoading: boolean; copied: string; copyField: (label: string, value?: string) => void; sites: Site[]; siteFilter: string; onSiteFilterChange: (siteId: string) => void; search: string; onSearchChange: (value: string) => void; isAdmin: boolean; onRemove: (generation: Generation) => void }) {
   const hasFilters = Boolean(siteFilter || search.trim());
   return (
     <>
@@ -776,7 +787,10 @@ function HistoryView({ generations, isLoading, copied, copyField, sites, siteFil
                 <div className="history-row-top"><strong>{generation.siteName}</strong><span className="history-author">por {generation.userName}</span><time>{new Date(generation.criadoEm).toLocaleString("pt-BR")}</time></div>
                 <p className="history-title">{generation.metaTitle || "Sem meta title"}</p>
                 <p className="history-preview">{(() => { const plain = stripMarkdown(generation.textoOtimizado); return `${plain.slice(0, 220)}${plain.length > 220 ? "…" : ""}`; })()}</p>
-                <button className="copy-button" onClick={() => copyField(`hist-${generation.id}`, generation.textoOtimizado)}>{copied === `hist-${generation.id}` ? "Copiado" : "⧉ Copiar texto"}</button>
+                <div className="history-row-actions">
+                  <button className="copy-button" onClick={() => copyField(`hist-${generation.id}`, generation.textoOtimizado)}>{copied === `hist-${generation.id}` ? "Copiado" : "⧉ Copiar texto"}</button>
+                  {isAdmin && <button className="copy-button danger" onClick={() => onRemove(generation)}>Apagar</button>}
+                </div>
               </div>
             ))}
           </div>
